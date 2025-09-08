@@ -1,5 +1,5 @@
 // frontend/src/components/TeacherDashboard.js
-import React, { useState } from 'react';
+import React, {useState, useEffect,useRef  } from 'react';
 import styled from 'styled-components';
 import { socket } from '../socket';
 
@@ -185,7 +185,6 @@ const TimerDisplay = styled.div`
   color: #374151;
 `;
 
-
 function TeacherDashboard() {
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState([
@@ -194,6 +193,33 @@ function TeacherDashboard() {
   ]);
   const [timer, setTimer] = useState(60);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [remainingTime, setRemainingTime] = useState(null);
+  const [pollActive, setPollActive] = useState(false);
+
+   const timerSelectRef = useRef(null);
+
+  const handleTimerClick = () => {
+    if (timerSelectRef.current) {
+      timerSelectRef.current.click();  // open native dropdown
+    }
+  };
+
+  // --- Socket Listeners ---
+  useEffect(() => {
+    socket.on("timer_update", (timeLeft) => {
+      setRemainingTime(timeLeft);
+    });
+
+    socket.on("poll_ended", () => {
+      setPollActive(false);
+      setRemainingTime(null);
+    });
+
+    return () => {
+      socket.off("timer_update");
+      socket.off("poll_ended");
+    };
+  }, []);
 
   const handleOptionChange = (index, value) => {
     const newOptions = [...options];
@@ -201,10 +227,10 @@ function TeacherDashboard() {
     setOptions(newOptions);
   };
 
- const handleCorrectnessChange = (optionIndex) => {
+  const handleCorrectnessChange = (optionIndex, value) => {
     const newOptions = options.map((option, index) => ({
       ...option,
-      isCorrect: index === optionIndex,
+      isCorrect: index === optionIndex ? value : option.isCorrect,
     }));
     setOptions(newOptions);
   };
@@ -212,20 +238,6 @@ function TeacherDashboard() {
   const handleAddOption = () => {
     setOptions([...options, { text: '', isCorrect: false }]);
   };
-  
-  // const handleSubmit = () => {
-  //   if (question.trim() && options.every(opt => opt.text.trim())) {
-  //     const pollData = {
-  //       question,
-  //       options: options.map(opt => opt.text), // Sending only text for now
-  //       timer,
-  //     };
-  //     socket.emit('create_poll', pollData);
-  //     console.log('Poll created:', pollData);
-  //   } else {
-  //     alert('Please fill out the question and all option fields.');
-  //   }
-  // };
 
   const handleSubmit = () => {
     if (!question.trim() || !options.every(opt => opt.text.trim())) {
@@ -237,16 +249,25 @@ function TeacherDashboard() {
       return;
     }
 
-    setIsSubmitting(true); // Disable button and show loading text
+    setIsSubmitting(true);
 
     const pollData = {
       question,
-      options: options, 
+      options: options,
       timer,
     };
     socket.emit('create_poll', pollData);
-  };
 
+    // Reset after asking
+    setQuestion('');
+    setOptions([
+      { text: '', isCorrect: false },
+      { text: '', isCorrect: false }
+    ]);
+    setTimer(60);
+    setIsSubmitting(false);
+    setPollActive(true);
+  };
 
   return (
     <DashboardContainer>
@@ -256,10 +277,39 @@ function TeacherDashboard() {
           <p>You'll have the ability to create and manage polls, ask questions, and monitor your students' responses in real-time.</p>
         </Header>
         
-        <FormRow>
-          <Label htmlFor="question">Enter your question</Label>
-          <TimerDisplay>{timer} seconds ▼</TimerDisplay>
-        </FormRow>
+     <FormRow>
+      <Label htmlFor="question">Enter your question</Label>
+
+      {/* Styled display, but clickable */}
+      <div style={{ position: "relative" }}>
+        <TimerDisplay onClick={handleTimerClick}>
+          {timer} seconds ▼
+        </TimerDisplay>
+
+        {/* Hidden select but still interactive via ref */}
+        <select
+          ref={timerSelectRef}
+          value={timer}
+          onChange={(e) => setTimer(Number(e.target.value))}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            opacity: 0,
+            width: "100%",
+            height: "100%",
+            cursor: "pointer"
+          }}
+        >
+          <option value={30}>30</option>
+          <option value={45}>45</option>
+          <option value={60}>60</option>
+          <option value={120}>120</option>
+        </select>
+      </div>
+    </FormRow>
+
+
         <TextAreaContainer>
           <TextArea 
             id="question"
@@ -283,21 +333,26 @@ function TeacherDashboard() {
             />
             <CorrectnessLabel>Is it Correct?</CorrectnessLabel>
             <RadioGroup>
-                <RadioLabel>
-                    <input 
+              <RadioLabel>
+                <input 
                   type="radio" 
-                  name={`correct-option`} 
-                  checked={option.isCorrect} 
-                  onChange={() => handleCorrectnessChange(index)} 
+                  name={`correct-option-${index}`} 
+                  checked={option.isCorrect === true}
+                  onChange={() => handleCorrectnessChange(index, true)} 
                 />
-                    <div></div>
-                    <span>Yes</span>
-                </RadioLabel>
-                <RadioLabel>
-                    <input type="radio" name={`correct-option-${index}`} checked={option.isCorrect === false} onChange={() => handleCorrectnessChange(index, false)} />
-                    <div></div>
-                    <span>No</span>
-                </RadioLabel>
+                <div></div>
+                <span>Yes</span>
+              </RadioLabel>
+              <RadioLabel>
+                <input 
+                  type="radio" 
+                  name={`correct-option-${index}`} 
+                  checked={option.isCorrect === false}
+                  onChange={() => handleCorrectnessChange(index, false)} 
+                />
+                <div></div>
+                <span>No</span>
+              </RadioLabel>
             </RadioGroup>
           </OptionItem>
         ))}
@@ -306,8 +361,15 @@ function TeacherDashboard() {
           + Add More option
         </AddOptionButton>
 
+        {/* --- Show timer countdown when poll active --- */}
+        {pollActive && remainingTime !== null && (
+          <p style={{ marginTop: "16px", fontWeight: "600", color: "#1F2937" }}>
+            Poll is live ⏳ Time left: {remainingTime}s
+          </p>
+        )}
+
         <Footer>
-         <AskQuestionButton onClick={handleSubmit} disabled={isSubmitting}>
+          <AskQuestionButton onClick={handleSubmit} disabled={isSubmitting}>
             {isSubmitting ? 'Asking...' : 'Ask Question'}
           </AskQuestionButton>
         </Footer>

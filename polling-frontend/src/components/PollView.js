@@ -12,11 +12,22 @@ const PageContainer = styled.div`
 const PollContainer = styled.div`
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;   /* <<< keep content aligned left */
   padding: 80px 24px 48px 24px;
   font-family: 'Inter', sans-serif;
+  width: 100%;
+  max-width: 727px;          /* matches card */
+  margin: 0 auto;            /* still centers the whole poll box */
 `;
 
+const PollBox = styled.div`
+  width: 100%;
+  border: 2px solid #D1C4E9; /* Light purple border from design */
+  border-radius: 12px;
+  padding: 24px;
+  background-color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+`;
 const TopActionsContainer = styled.div`
   position: absolute;
   top: 32px;
@@ -35,12 +46,9 @@ const ViewHistoryButton = styled.button`
   font-size: 14px;
   display: flex;
   align-items: center;
-  gap: 8px; /* Space between icon and text */
+  gap: 8px;
   transition: background-color 0.2s;
-
-  &:hover {
-    background-color: #C7D2FE;
-  }
+  &:hover { background-color: #C7D2FE; }
 `;
 
 const TimerContainer = styled.div`
@@ -49,23 +57,30 @@ const TimerContainer = styled.div`
   gap: 8px;
   font-size: 20px;
   font-weight: 600;
-  color: #EF4444; /* Red color for timer */
+  color: #EF4444;
   margin-bottom: 16px;
 `;
 
-const QuestionCard = styled.div`
-  background: #374151;
-  color: white;
-  border-radius: 12px;
+const SectionHeader = styled.h3`
   width: 100%;
   max-width: 700px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;  /* black */
+  margin: 0 0 25px 0;
+`;
+
+const QuestionCard = styled.div`
+  background: linear-gradient(90deg, #343434 0%, #6E6E6E 100%);
+  color: white;
+  height: 50px;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 727px;
   text-align: center;
   margin-bottom: 32px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  h2 {
-    font-size: 24px;
-    font-weight: 700;
-  }
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  h2 { font-size: 17px; font-weight: 600; }
 `;
 
 const OptionsContainer = styled.div`
@@ -104,10 +119,7 @@ const OptionButton = styled.button`
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-
-  &:hover {
-    border-color: #818CF8;
-  }
+  &:hover { border-color: #818CF8; }
 `;
 
 const ActionsContainer = styled.div`
@@ -127,11 +139,7 @@ const SubmitButton = styled.button`
   font-weight: 700;
   border: none;
   cursor: pointer;
-  
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
 const ResultBarContainer = styled.div`
@@ -151,8 +159,7 @@ const ResultBarContainer = styled.div`
 
 const ProgressBar = styled.div`
   position: absolute;
-  top: 0;
-  left: 0;
+  top: 0; left: 0;
   height: 100%;
   background: linear-gradient(99.18deg, #8F64E1 -46.89%, #1D68BD 223.45%);
   width: ${({ percentage }) => percentage}%;
@@ -175,12 +182,19 @@ const ResultText = styled.span`
   transition: color 0.4s ease-in-out;
 `;
 
+const CorrectTag = styled.span`
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #10B981; /* green */
+`;
+
 const TeacherActionsContainer = styled.div`
   width: 100%;
   max-width: 700px;
   margin-top: 32px;
   display: flex;
-  justify-content: flex-end; /* Align to the right */
+  justify-content: flex-end;
 `;
 
 const AskNewQuestionButton = styled.button`
@@ -201,70 +215,95 @@ const WaitingMessage = styled.p`
   color: #4B5563;
 `;
 
-
 function PollView({ pollState, user, onAskNewQuestion, onViewHistory }) {
   const [timer, setTimer] = useState(pollState.timer);
   const [selectedOption, setSelectedOption] = useState(null);
+  const [answerLocked, setAnswerLocked] = useState(false);
 
-  
   useEffect(() => {
     setTimer(pollState.timer);
     const handleTimerUpdate = (newTime) => setTimer(newTime);
     socket.on('timer_update', handleTimerUpdate);
     return () => socket.off('timer_update', handleTimerUpdate);
   }, [pollState.timer]);
+
   const hasVoted = pollState.studentsWhoVoted.includes(user.name);
-  
+
+  useEffect(() => {
+    const handleLock = () => setAnswerLocked(true);
+    socket.on("answer_locked", handleLock);
+    return () => socket.off("answer_locked", handleLock);
+  }, []);
+
   const handleSubmitVote = () => {
     if (selectedOption !== null) {
       socket.emit('submit_answer', { studentId: user.name, answerId: selectedOption });
+      setAnswerLocked(true);
     }
   };
-  
-  const totalVotes = pollState.options.reduce((sum, opt) => sum + opt.votes, 0);
 
-  // VIEW 1: This is the student's voting screen (Design: 7.png)
-  if (user.role === 'student' && !hasVoted) {
-    return (
-      <PageContainer>
-        <PollContainer>
-          <TimerContainer>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.485 2 2 6.485 2 12C2 17.515 6.485 22 12 22C17.515 22 22 17.515 22 12C22 6.485 17.515 2 12 2ZM12 20C7.589 20 4 16.411 4 12C4 7.589 7.589 4 12 4C16.411 4 20 7.589 20 12C20 16.411 16.411 20 12 20Z" fill="#EF4444"/><path d="M12.5 7H11V13L16.25 16.15L17 14.92L12.5 12.25V7Z" fill="#EF4444"/></svg>
-            <span>00:{timer.toString().padStart(2, '0')}</span>
-          </TimerContainer>
-          <QuestionCard>
-            <h2>{pollState.question}</h2>
-          </QuestionCard>
-          <OptionsContainer>
-            {pollState.options.map((option, index) => (
-              <OptionButton
-                key={option.id}
-                isSelected={selectedOption === option.id}
-                onClick={() => setSelectedOption(option.id)}
-              >
-                <OptionNumber>{index + 1}</OptionNumber>
-                {option.text}
-              </OptionButton>
-            ))}
-          </OptionsContainer>
-          <ActionsContainer>
-            <SubmitButton disabled={selectedOption === null} onClick={handleSubmitVote}>
-              Submit
-            </SubmitButton>
-          </ActionsContainer>
-        </PollContainer>
-      </PageContainer>
-    );
-  }
-  
-  // VIEW 2: This is the results screen (Design: 8.png for Teacher, 9.png for Student)
+  const totalVotes = pollState.options.reduce((sum, opt) => sum + (opt.votes || 0), 0);
+
+  // STUDENT V// STUDENT VOTING SCREEN
+if (user.role === 'student' && timer > 0) {
   return (
     <PageContainer>
-      {/* This button only shows for the teacher */}
+      <PollContainer>
+
+        {/* Question + Timer inline */}
+       {/* Question + Timer inline */}
+{/* Question + Timer inline */}
+<div style={{
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-start",   // <<< keep both together at start
+  gap: "12px",
+  marginBottom: "8px"
+}}>
+  <SectionHeader style={{ margin: 0 }}>Question 1</SectionHeader>
+  <TimerContainer style={{ marginBottom: 0 }}>
+    ⏱ <span>00:{String(timer).padStart(2, '0')}</span>
+  </TimerContainer>
+</div>
+
+
+<PollBox>
+        <QuestionCard><h2>{pollState.question}</h2></QuestionCard>
+
+        <OptionsContainer>
+          {pollState.options.map((option, index) => (
+            <OptionButton
+              key={option.id}
+              isSelected={selectedOption === option.id}
+              disabled={answerLocked}   // disable after submit
+              onClick={() => !answerLocked && setSelectedOption(option.id)}
+            >
+              <OptionNumber>{index + 1}</OptionNumber>
+              {option.text}
+            </OptionButton>
+          ))}
+        </OptionsContainer>
+</PollBox>
+        <ActionsContainer>
+          <SubmitButton 
+            disabled={selectedOption === null || answerLocked}
+            onClick={handleSubmitVote}
+          >
+            {answerLocked ? "Answer Submitted" : "Submit"}
+          </SubmitButton>
+        </ActionsContainer>
+      </PollContainer>
+    </PageContainer>
+  );
+}
+
+
+  // RESULTS SCREEN (no countdown on teacher; label added)
+  return (
+    <PageContainer>
       {user.role === 'teacher' && (
         <TopActionsContainer>
           <ViewHistoryButton onClick={onViewHistory}>
-            {/* ADDED: Eye Icon SVG */}
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 4.5C7 4.5 2.73 7.61 1 12C2.73 16.39 7 19.5 12 19.5C17 19.5 21.27 16.39 23 12C21.27 7.61 17 4.5 12 4.5ZM12 17C9.24 17 7 14.76 7 12C7 9.24 9.24 7 12 7C14.76 7 17 9.24 17 12C17 14.76 14.76 17 12 17ZM12 9C10.34 9 9 10.34 9 12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12C15 10.34 13.66 9 12 9Z" fill="#4338CA"/>
             </svg>
@@ -272,17 +311,16 @@ function PollView({ pollState, user, onAskNewQuestion, onViewHistory }) {
           </ViewHistoryButton>
         </TopActionsContainer>
       )}
+
       <PollContainer>
-        <TimerContainer>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.485 2 2 6.485 2 12C2 17.515 6.485 22 12 22C17.515 22 22 17.515 22 12C22 6.485 17.515 2 12 2ZM12 20C7.589 20 4 16.411 4 12C4 7.589 7.589 4 12 4C16.411 4 20 7.589 20 12C20 16.411 16.411 20 12 20Z" fill="#EF4444"/><path d="M12.5 7H11V13L16.25 16.15L17 14.92L12.5 12.25V7Z" fill="#EF4444"/></svg>
-          <span>00:{timer.toString().padStart(2, '0')}</span>
-        </TimerContainer>
-        <QuestionCard>
-          <h2>{pollState.question}</h2>
-        </QuestionCard>
+        {/* No TimerContainer here */}
+
+        <SectionHeader>Question</SectionHeader>
+        <QuestionCard><h2>{pollState.question}</h2></QuestionCard>
+
         <OptionsContainer>
           {pollState.options.map((option, index) => {
-            const percentage = totalVotes === 0 ? 0 : Math.round((option.votes / totalVotes) * 100);
+            const percentage = totalVotes === 0 ? 0 : Math.round(((option.votes || 0) / totalVotes) * 100);
             return (
               <ResultBarContainer key={option.id}>
                 <ProgressBar percentage={percentage} />
@@ -290,6 +328,8 @@ function PollView({ pollState, user, onAskNewQuestion, onViewHistory }) {
                   <OptionNumber>{index + 1}</OptionNumber>
                   <ResultText isFilled={percentage > 10}>
                     {option.text}
+                    {/* show which one was correct after poll ends */}
+                    {timer === 0 && option.isCorrect && <CorrectTag>Correct</CorrectTag>}
                   </ResultText>
                   <ResultText isFilled={percentage > 10} style={{ marginLeft: 'auto', fontWeight: 'bold' }}>
                     {percentage}%
@@ -299,17 +339,13 @@ function PollView({ pollState, user, onAskNewQuestion, onViewHistory }) {
             );
           })}
         </OptionsContainer>
-        
+
         {user.role === 'teacher' ? (
           <TeacherActionsContainer>
-            <AskNewQuestionButton onClick={onAskNewQuestion}>
-            + Ask a new question
-          </AskNewQuestionButton>
+            <AskNewQuestionButton onClick={onAskNewQuestion}>+ Ask a new question</AskNewQuestionButton>
           </TeacherActionsContainer>
         ) : (
-          <WaitingMessage>
-            Wait for the teacher to ask a new question..
-          </WaitingMessage>
+          <WaitingMessage>Wait for the teacher to ask a new question..</WaitingMessage>
         )}
       </PollContainer>
     </PageContainer>
